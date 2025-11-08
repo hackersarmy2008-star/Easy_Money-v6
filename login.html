@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Easy Money - Login</title>
+<link rel="stylesheet" href="style.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body class="auth-page">
+
+<div class="auth-container">
+  <img src="images/logo-square.png" alt="logo" class="auth-logo">
+  <h2>Welcome Back!</h2>
+  <p>Easy Money</p>
+  <p>INVEST IN SMART GENERATION FUTURE FARMING AND EARN MONEY</p>
+
+
+  <form id="loginForm" class="auth-form">
+    <div class="input-row">
+      <span class="prefix">+91</span>
+      <input id="loginPhone" type="text" placeholder="Enter phone number" required>
+    </div>
+    <div class="input-row">
+      <input id="loginPassword" type="password" placeholder="Enter password" required>
+      <i class="bi bi-eye-slash input-icon" onclick="togglePassword('loginPassword', this)"></i>
+    </div>
+
+    <button class="primary-btn" type="submit">LOGIN 🚀</button>
+    <p class="muted">Don't have an account? <a href="register.html">Sign Up</a></p>
+  </form>
+</div>
+
+<script src="main.js"></script>
+<script>
+function togglePassword(id, el){
+  const input = document.getElementById(id);
+  if(input.type === 'password'){ 
+    input.type = 'text'; 
+    el.className = 'bi bi-eye input-icon'; 
+  } else { 
+    input.type = 'password'; 
+    el.className = 'bi bi-eye-slash input-icon'; 
+  }
+}
+</script>
+</body>
+</html>

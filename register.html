@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Easy Money - Register</title>
+<link rel="stylesheet" href="style.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body class="auth-page">
+
+<div class="auth-container">
+  <img src="images/logo-square.png" alt="logo" class="auth-logo">
+  <h2>Create Account</h2>
+  <p>Join Easy Money today!</p>
+
+  <form id="registerForm" class="auth-form">
+    <div class="input-row">
+      <i class="bi bi-person-fill" style="margin-right:12px; color:var(--primary)"></i>
+      <input id="regName" type="text" placeholder="Enter your name" required>
+    </div>
+    <div class="input-row">
+      <span class="prefix">+91</span>
+      <input id="regPhone" type="text" placeholder="Enter phone number" required>
+    </div>
+    <div class="otp-row">
+      <input id="regOtp" type="text" placeholder="Enter OTP code">
+      <button type="button" class="otp-btn" onclick="sendOtp()">Send OTP</button>
+    </div>
+    <div class="input-row">
+      <input id="regPassword" type="password" placeholder="Create password" required>
+      <i class="bi bi-eye-slash input-icon" onclick="togglePassword('regPassword', this)"></i>
+    </div>
+
+    <div class="input-row">
+      <input id="referralCode" type="text" placeholder="Referral Code (Optional)">
+    </div>
+
+    <button class="primary-btn" type="submit">CREATE ACCOUNT 🚀</button>
+    <p class="muted">Already have an account? <a href="login.html">Log In</a></p>
+  </form>
+</div>
+
+<script src="main.js"></script>
+<script>
+function sendOtp(){
+  alert('OTP sent 4444.');
+}
+function togglePassword(id, el){
+  const input = document.getElementById(id);
+  if(input.type === 'password'){ 
+    input.type = 'text'; 
+    el.className = 'bi bi-eye input-icon'; 
+  } else { 
+    input.type = 'password'; 
+    el.className = 'bi bi-eye-slash input-icon'; 
+  }
+}
+</script>
+</body>
+</html>/html>

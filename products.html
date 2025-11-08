@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Easy Money - Products</title>
+<link rel="stylesheet" href="style.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+<script> if (!localStorage.getItem('authToken')) window.location.href='login.html'; </script>
+
+<header class="page-header">
+  <h2>Products</h2>
+  <i class="bi bi-lock-fill header-lock"></i>
+</header>
+
+<main class="products-page">
+  <div class="tabs">
+    <button class="tab active">★ Daily Plan</button>
+    <button class="tab">☺ Welfare Plan</button>
+  </div>
+
+  <div class="product-list">
+    <!-- product items (replicated to match screenshot) -->
+    <div class="product-card">
+      <div class="badge">Days: 2</div>
+      <div class="product-left">
+        <img src="attached_assets/stock_images/modern_electronic_ga_02091fd0.jpg" alt="Electronics">
+      </div>
+      <div class="product-mid">
+        <h3>Special Offer</h3>
+        <div class="income-row">
+          <div><p class="muted">Daily income</p><p class="purple big">₹2640</p></div>
+          <div><p class="muted">Total income</p><p class="purple big">₹5280</p></div>
+        </div>
+        <p class="price">Price: <span class="orange">₹800</span></p>
+      </div>
+      <div class="product-right">
+        <button class="invest orange" onclick="invest(800)">Invest</button>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="badge">Days: 45</div>
+      <div class="product-left"><img src="attached_assets/stock_images/modern_electronic_ga_473c27f4.jpg" alt="Technology"></div>
+      <div class="product-mid">
+        <h3>Farming 1</h3>
+        <div class="income-row">
+          <div><p class="muted">Daily income</p><p class="purple big">₹990</p></div>
+          <div><p class="muted">Total income</p><p class="purple big">₹990</p></div>
+        </div>
+        <p class="price">Price: <span class="orange">₹296</span></p>
+      </div>
+      <div class="product-right"><button class="invest orange" onclick="invest(296)">Invest</button></div>
+    </div>
+
+    <div class="product-card">
+      <div class="badge">Days: 30</div>
+      <div class="product-left"><img src="images/product3.jpg" alt="Smart Devices"></div>
+      <div class="product-mid">
+        <h3>Smart Plan</h3>
+        <div class="income-row">
+          <div><p class="muted">Daily income</p><p class="purple big">₹1250</p></div>
+          <div><p class="muted">Total income</p><p class="purple big">₹37500</p></div>
+        </div>
+        <p class="price">Price: <span class="orange">₹650</span></p>
+      </div>
+      <div class="product-right"><button class="invest orange" onclick="invest(650)">Invest</button></div>
+    </div>
+
+    <div class="product-card">
+      <div class="badge">Days: 15</div>
+      <div class="product-left"><img src="images/product4.jpg" alt="Premium Plan"></div>
+      <div class="product-mid">
+        <h3>Premium Plus</h3>
+        <div class="income-row">
+          <div><p class="muted">Daily income</p><p class="purple big">₹1800</p></div>
+          <div><p class="muted">Total income</p><p class="purple big">₹27000</p></div>
+        </div>
+        <p class="price">Price: <span class="orange">₹1200</span></p>
+      </div>
+      <div class="product-right"><button class="invest orange" onclick="invest(1200)">Invest</button></div>
+    </div>
+
+    <div class="product-card">
+      <div class="badge">Days: 7</div>
+      <div class="product-left"><img src="images/product5.jpg" alt="Quick Returns"></div>
+      <div class="product-mid">
+        <h3>Quick Returns</h3>
+        <div class="income-row">
+          <div><p class="muted">Daily income</p><p class="purple big">₹850</p></div>
+          <div><p class="muted">Total income</p><p class="purple big">₹5950</p></div>
+        </div>
+        <p class="price">Price: <span class="orange">₹500</span></p>
+      </div>
+      <div class="product-right"><button class="invest orange" onclick="invest(500)">Invest</button></div>
+    </div>
+
+    <!-- add remainder cards similarly if desired -->
+  </div>
+</main>
+
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item"><i class="bi bi-house"></i><span>Home</span></a>
+  <a href="products.html" class="nav-item active"><i class="bi bi-box-seam"></i><span>Products</span></a>
+  <a href="promotion.html" class="nav-item"><i class="bi bi-megaphone"></i><span>Promotion</span></a>
+  <a href="mine.html" class="nav-item"><i class="bi bi-person"></i><span>Mine</span></a>
+</nav>
+
+<script src="main.js"></script>
+<script>
+async function invest(price){
+  if (!confirm(`Invest ₹${price} from your wallet?\n\nYou will earn ₹100 daily automatically.`)) {
+    return;
+  }
+
+  try {
+    const data = await apiCall('/invest', 'POST', { amount: price });
+    alert(data.message || 'Investment successful. ₹100 will be added to your wallet every 24 hours.');
+    window.location.reload();
+  } catch (error) {
+    alert(error.message || 'Investment failed. Please try again.');
+  }
+}
+</script>
+</body>
+</html>ml>

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Easy Money - Promotion</title>
+<link rel="stylesheet" href="style.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+<script> if (!localStorage.getItem('authToken')) window.location.href='login.html'; </script>
+
+<header class="page-header">
+  <h2>Promotion</h2>
+</header>
+
+<main class="promotion-page">
+  <div class="promo-stats card">
+    <div class="stat">
+      <p class="muted">Total People</p>
+      <p class="big purple">0</p>
+    </div>
+    <div class="stat">
+      <p class="muted">Total rebate</p>
+      <p class="big purple">₹0</p>
+    </div>
+  </div>
+
+  <div class="invite card">
+    <div class="invite-left">
+      <img src="images/gift-icon.png" alt="" style="width:48px;">
+    </div>
+    <div class="invite-mid">
+      <p class="muted">Invitation Link</p>
+      <small class="muted" id="inviteLink">Loading...</small>
+    </div>
+    <div class="invite-right">
+      <button class="copy-btn" onclick="copyLink()">Copy link</button>
+    </div>
+  </div>
+
+  <div class="levels">
+    <div class="level card">
+      <div class="level-head"><img src="images/medal1.png" alt=""> <h4>First Level <span class="view">View more ›</span></h4></div>
+      <div class="level-row">
+        <div><p class="purple big">10%</p><p class="muted">Rebate ratio</p></div>
+        <div><p class="purple big">₹0.00</p><p class="muted">Rebate</p></div>
+        <div><p class="purple big">0</p><p class="muted">Quantity</p></div>
+      </div>
+    </div>
+
+    <div class="level card">
+      <div class="level-head"><img src="images/medal2.png" alt=""> <h4>Second Level <span class="view">View more ›</span></h4></div>
+      <div class="level-row">
+        <div><p class="purple big">0%</p><p class="muted">Rebate ratio</p></div>
+        <div><p class="purple big">₹0.00</p><p class="muted">Rebate</p></div>
+        <div><p class="purple big">0</p><p class="muted">Quantity</p></div>
+      </div>
+    </div>
+
+    <div class="level card">
+      <div class="level-head"><img src="images/medal3.png" alt=""> <h4>Third Level <span class="view">View more ›</span></h4></div>
+      <div class="level-row">
+        <div><p class="purple big">0%</p><p class="muted">Rebate ratio</p></div>
+        <div><p class="purple big">₹0.00</p><p class="muted">Rebate</p></div>
+        <div><p class="purple big">0</p><p class="muted">Quantity</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="explain card">
+    <p class="muted">
+      Copy your invitation link or code and share it with your friends and family, let them register and invest through your invitation link or code, and you can earn team commissions.
+    </p>
+    <p class="muted">
+      You can invite A to become your first-level team member, then A invites B to become your second-level team member, and B invites C to become your third-level team member.
+    </p>
+  </div>
+
+</main>
+
+<nav class="bottom-nav">
+  <a href="index.html" class="nav-item"><i class="bi bi-house"></i><span>Home</span></a>
+  <a href="products.html" class="nav-item"><i class="bi bi-box-seam"></i><span>Products</span></a>
+  <a href="promotion.html" class="nav-item active"><i class="bi bi-megaphone"></i><span>Promotion</span></a>
+  <a href="mine.html" class="nav-item"><i class="bi bi-person"></i><span>Mine</span></a>
+</nav>
+
+<script src="main.js"></script>
+<script>
+let userInviteLink = '';
+
+async function loadInviteLink() {
+  try {
+    const API_BASE = window.location.origin + '/api';
+    const token = localStorage.getItem('authToken');
+    
+    const response = await fetch(API_BASE + '/user/profile', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    const data = await response.json();
+    const referralCode = data.user.referral_code;
+    userInviteLink = `${window.location.origin}/register.html?invite=${referralCode}`;
+    
+    document.getElementById('inviteLink').textContent = userInviteLink;
+  } catch (error) {
+    console.error('Failed to load invitation link:', error);
+    document.getElementById('inviteLink').textContent = 'Error loading link';
+  }
+}
+
+function copyLink(){
+  const tmp = document.createElement('input');
+  tmp.value = userInviteLink;
+  document.body.appendChild(tmp);
+  tmp.select();
+  document.execCommand('copy');
+  document.body.removeChild(tmp);
+  alert('Invitation link copied!');
+}
+
+loadInviteLink();
+</script>
+</body>
+</html>ml>

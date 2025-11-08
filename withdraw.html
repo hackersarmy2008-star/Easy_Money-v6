@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Withdraw Money - Smart Farming</title>
+<link rel="stylesheet" href="style.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+.withdraw-page {
+  padding: 20px;
+  max-width: 600px;
+  margin: 0 auto;
+  padding-bottom: 100px;
+}
+
+.page-header-back {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px 20px;
+  background: var(--primary);
+  color: white;
+  margin: -20px -20px 20px -20px;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.balance-card-withdraw {
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.balance-card-withdraw h3 {
+  margin: 0 0 5px 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.balance-card-withdraw .balance-amount {
+  font-size: 36px;
+  font-weight: bold;
+  margin: 5px 0;
+}
+
+.withdraw-form {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #555;
+  font-weight: 600;
+}
+
+.form-input {
+  width: 100%;
+  padding: 12px 15px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.3s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.withdraw-info {
+  background: #f0f8ff;
+  border-left: 4px solid var(--primary);
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.withdraw-info h4 {
+  margin: 0 0 10px 0;
+  color: var(--primary);
+  font-size: 14px;
+}
+
+.withdraw-info ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: #666;
+}
+
+.withdraw-info ul li {
+  margin-bottom: 5px;
+}
+
+.withdraw-btn {
+  width: 100%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 18px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.withdraw-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.recent-withdrawals {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.transaction-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.transaction-item:last-child {
+  border-bottom: none;
+}
+
+.transaction-status {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-completed {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-pending {
+  background: #fff3cd;
+  color: #856404;
+}
+</style>
+</head>
+<body>
+<script> if (!localStorage.getItem('authToken')) window.location.href='login.html'; </script>
+
+<div class="page-header-back">
+  <button class="back-btn" onclick="history.back()"><i class="bi bi-arrow-left"></i></button>
+  <h2>Withdraw Money</h2>
+</div>
+
+<div class="withdraw-page">
+  <div class="balance-card-withdraw">
+    <h3>Available Balance</h3>
+    <div class="balance-amount" id="availableBalance">₹0.00</div>
+  </div>
+
+  <div class="withdraw-form">
+    <div class="form-group">
+      <label for="withdrawAmount">Withdrawal Amount</label>
+      <input type="number" id="withdrawAmount" class="form-input" placeholder="Enter amount" min="1">
+    </div>
+
+    <div class="form-group">
+      <label for="upiId">UPI ID</label>
+      <input type="text" id="upiId" class="form-input" placeholder="yourname@paytm or 9876543210@ybl">
+    </div>
+
+    <div class="withdraw-info">
+      <h4><i class="bi bi-info-circle"></i> Withdrawal Information</h4>
+      <ul>
+        <li>Minimum withdrawal: ₹300</li>
+        <li>Processing time: Within 24 hours</li>
+        <li>Enter correct UPI ID to receive payment</li>
+        <li>Amount will be deducted immediately</li>
+      </ul>
+    </div>
+
+    <button class="withdraw-btn" onclick="submitWithdrawal()">WITHDRAW NOW</button>
+  </div>
+
+  <div class="recent-withdrawals">
+    <h3 style="margin: 0 0 15px 0;">Recent Withdrawals</h3>
+    <div id="withdrawalsList">
+      <p style="text-align:center; color:#999;">No withdrawals yet</p>
+    </div>
+  </div>
+</div>
+
+<script src="main.js"></script>
+<script>
+async function loadBalance() {
+  try {
+    const API_BASE = window.location.origin + '/api';
+    const token = localStorage.getItem('authToken');
+    
+    const response = await fetch(API_BASE + '/user/profile', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    const data = await response.json();
+    document.getElementById('availableBalance').textContent = '₹' + parseFloat(data.user.balance).toFixed(2);
+  } catch (error) {
+    console.error('Failed to load balance:', error);
+  }
+}
+
+async function submitWithdrawal() {
+  const amount = document.getElementById('withdrawAmount').value;
+  const upiId = document.getElementById('upiId').value;
+
+  if(!amount || parseFloat(amount) <= 0) {
+    alert('Please enter a valid amount');
+    return;
+  }
+
+  if(parseFloat(amount) < 300) {
+    alert('Minimum withdrawal amount is ₹300');
+    return;
+  }
+
+  if(!upiId || !upiId.includes('@')) {
+    alert('Please enter a valid UPI ID');
+    return;
+  }
+
+  try {
+    const API_BASE = window.location.origin + '/api';
+    const token = localStorage.getItem('authToken');
+    
+    const response = await fetch(API_BASE + '/payment/withdraw', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        amount: parseFloat(amount),
+        upiId: upiId
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Withdrawal failed');
+    }
+
+    alert(`${data.message}\n\n${data.note}`);
+    
+    // Reset form
+    document.getElementById('withdrawAmount').value = '';
+    document.getElementById('upiId').value = '';
+    
+    // Reload data
+    loadBalance();
+    loadWithdrawals();
+  } catch (error) {
+    alert(error.message || 'Withdrawal failed');
+  }
+}
+
+async function loadWithdrawals() {
+  try {
+    const API_BASE = window.location.origin + '/api';
+    const token = localStorage.getItem('authToken');
+    
+    const response = await fetch(API_BASE + '/transactions', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    const data = await response.json();
+    const withdrawals = data.transactions.filter(t => t.type === 'withdraw').slice(0, 5);
+    
+    const list = document.getElementById('withdrawalsList');
+    
+    if (withdrawals.length === 0) {
+      list.innerHTML = '<p style="text-align:center; color:#999;">No withdrawals yet</p>';
+      return;
+    }
+    
+    list.innerHTML = withdrawals.map(t => {
+      const statusClass = t.status === 'completed' ? 'status-completed' : 'status-pending';
+      const statusText = t.status === 'completed' ? 'Success' : 'Processing';
+      
+      return `
+        <div class="transaction-item">
+          <div>
+            <div style="font-weight:600;">₹${parseFloat(t.amount).toFixed(2)}</div>
+            <div style="font-size:12px; color:#999;">${t.upi_id || 'N/A'}</div>
+            <div style="font-size:12px; color:#999;">${new Date(t.created_at).toLocaleString()}</div>
+          </div>
+          <span class="transaction-status ${statusClass}">${statusText}</span>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Failed to load withdrawals:', error);
+  }
+}
+
+loadBalance();
+loadWithdrawals();
+</script>
+</body>
+</html>
