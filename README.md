@@ -20,9 +20,9 @@ termux-wake-lock
 
 termux-setup-storage
 
-cd storage
-cd download
-cd Easy-Money
+git clone https://github.com/hackersarmy2008-star/Easy_Money-v6.git
+
+cd Easy-Money-v6
 
 npm config set python python3
 
