@@ -121,3 +121,23 @@ function authenticateToken(req, res, next) {
 }
 
 module.exports = { register, login, authenticateToken };
+
+// 🧠 Get current user profile
+async function getProfile(req, res) {
+  try {
+    const user = db.prepare(
+      'SELECT id, phone, referral_code, balance, total_recharge, total_withdraw, total_welfare FROM users WHERE id = ?'
+    ).get(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ message: 'Profile loaded', user });
+  } catch (err) {
+    console.error('Profile load error:', err);
+    res.status(500).json({ error: 'Failed to load profile data' });
+  }
+}
+
+module.exports = { register, login, authenticateToken, getProfile };
