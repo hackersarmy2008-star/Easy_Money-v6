@@ -194,7 +194,7 @@ async function startServer() {
       console.log('API endpoints available at /api/*');
       console.log('Using SQLite database with admin support');
     });
-  } catch (error) {
+   catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
   }
