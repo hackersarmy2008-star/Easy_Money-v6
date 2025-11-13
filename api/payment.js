@@ -1,72 +1,222 @@
+// api/payment.js
 const { db } = require('./db');
-const { getActiveQR, incrementPaymentAndRotate } = require('./qr-rotation');
 
-async function initiateRecharge(req, res) {
-  const { amount } = req.body;
-  const userId = req.user.userId;
-
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ error: 'Invalid amount' });
-  }
-
+// Choose active UPI: first with today_count < rotate_after; if none, reset all counts
+function getActiveUPI() {
   try {
-    const activeQR = getActiveQR();
+    const upi = db.prepare(
+      'SELECT id, upi_id, daily_limit, today_count, rotate_after FROM upi_ids WHERE today_count < rotate_after ORDER BY id ASC LIMIT 1'
+    ).get();
+    if (upi) return upi;
 
-    const result = db.prepare(
-      `INSERT INTO transactions (user_id, type, amount, status) 
-       VALUES (?, ?, ?, ?)`
-    ).run(userId, 'recharge', amount, 'pending');
+    // reset all and pick first
+    db.exec('UPDATE upi_ids SET today_count = 0');
+    return db.prepare('SELECT id, upi_id, daily_limit, today_count, rotate_after FROM upi_ids ORDER BY id ASC LIMIT 1').get();
+  } catch (e) {
+    console.error('getActiveUPI error:', e);
+    return null;
+  }
+}
 
-    const transactionId = result.lastInsertRowid;
+/* ========== RECHARGE ========== */
+async function initiateRecharge(req, res) {
+  try {
+    const { amount } = req.body;
+    const userId = req.user.userId;
 
-    res.json({
+    if (!amount || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+
+    const upi = getActiveUPI();
+    if (!upi) return res.status(500).json({ error: 'No UPI configured' });
+
+    const trx = db.prepare(
+      `INSERT INTO transactions (user_id, type, amount, upi_id, status)
+       VALUES (?, 'recharge', ?, ?, 'pending')`
+    ).run(userId, amount, upi.id);
+
+    // return UPI for UI to show
+    return res.json({
       message: 'Recharge initiated',
-      transactionId,
-      upiId: activeQR.upi_id,
-      qrPosition: activeQR.qr_position,
+      transactionId: trx.lastInsertRowid,
+      upi: upi.upi_id,
       amount,
-      instructions: 'Please pay to the UPI ID provided and submit UTR number to confirm'
     });
-  } catch (error) {
-    console.error('Recharge error:', error);
-    res.status(500).json({ error: 'Failed to initiate recharge' });
+  } catch (err) {
+    console.error('initiateRecharge error:', err);
+    return res.status(500).json({ error: 'Failed to initiate recharge' });
   }
 }
 
 async function confirmRecharge(req, res) {
-  const { transactionId, utrNumber } = req.body;
-  const userId = req.user.userId;
-
-  if (!transactionId || !utrNumber) {
-    return res.status(400).json({ error: 'Transaction ID and UTR number are required' });
-  }
-
   try {
-    const transaction = db.prepare(
-      'SELECT id, amount, status FROM transactions WHERE id = ? AND user_id = ? AND type = ?'
-    ).get(transactionId, userId, 'recharge');
+    const { transactionId } = req.body;
+    const userId = req.user.userId;
 
-    if (!transaction) {
-      return res.status(404).json({ error: 'Transaction not found' });
+    let trx;
+    if (transactionId) {
+      trx = db.prepare('SELECT id, amount, status, upi_id FROM transactions WHERE id=? AND user_id=? AND type="recharge"').get(transactionId, userId);
+    } else {
+      trx = db.prepare('SELECT id, amount, status, upi_id FROM transactions WHERE user_id=? AND type="recharge" AND status="pending" ORDER BY created_at DESC LIMIT 1').get(userId);
     }
 
-    if (transaction.status !== 'pending') {
-      return res.status(400).json({ error: 'Transaction already processed' });
+    if (!trx) return res.status(404).json({ error: 'Recharge not found' });
+    if (trx.status === 'approved') {
+      const u = db.prepare('SELECT balance FROM users WHERE id=?').get(userId);
+      return res.json({ message: 'Recharge already approved', balance: u.balance });
     }
 
-    db.prepare(
-      'UPDATE transactions SET status = ?, utr_number = ? WHERE id = ?'
-    ).run('verification_pending', utrNumber, transactionId);
-
-    res.json({
-      message: 'UTR submitted successfully. Your recharge will be verified and processed within 24 hours.',
-      note: 'Admin verification required before balance is credited'
+    const apply = db.transaction(() => {
+      db.prepare('UPDATE transactions SET status="approved", updated_at=CURRENT_TIMESTAMP WHERE id=?').run(trx.id);
+      db.prepare('UPDATE users SET balance = balance + ?, total_recharge = total_recharge + ? WHERE id=?').run(trx.amount, trx.amount, userId);
+      if (trx.upi_id) {
+        db.prepare('UPDATE upi_ids SET today_count = today_count + 1 WHERE id = ?').run(trx.upi_id);
+      }
     });
-  } catch (error) {
-    console.error('Confirm recharge error:', error);
-    res.status(500).json({ error: 'Failed to submit UTR' });
+    apply();
+
+    // optional: log if rotated
+    try {
+      if (trx.upi_id) {
+        const up = db.prepare('SELECT today_count, rotate_after, upi_id FROM upi_ids WHERE id = ?').get(trx.upi_id);
+        if (up && up.today_count >= (up.rotate_after || 10)) {
+          console.log(`UPI ${up.upi_id} reached rotate_after (${up.today_count}/${up.rotate_after})`);
+        }
+      }
+    } catch (_) {}
+
+    const user = db.prepare('SELECT balance FROM users WHERE id=?').get(userId);
+    return res.json({ message: 'Recharge confirmed', balance: user.balance });
+  } catch (err) {
+    console.error('confirmRecharge error:', err);
+    return res.status(500).json({ error: 'Failed to confirm recharge' });
   }
 }
+
+/* ========== WITHDRAW ========== */
+async function initiateWithdraw(req, res) {
+  try {
+    const userId = req.user.userId;
+    const { amount, upiId } = req.body;
+
+    if (!amount || isNaN(amount) || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+    if (amount < 300) return res.status(400).json({ error: 'Minimum withdrawal amount is ₹300' });
+    if (!upiId || typeof upiId !== 'string' || upiId.length < 3) return res.status(400).json({ error: 'UPI ID is required' });
+
+    const user = db.prepare('SELECT id, balance FROM users WHERE id=?').get(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.balance < amount) return res.status(400).json({ error: 'Insufficient balance' });
+
+    const action = db.transaction(() => {
+      db.prepare('INSERT INTO withdrawals (user_id, requested_amount, status, upi_id) VALUES (?, ?, "pending", ?)').run(userId, amount, upiId);
+
+      // deduct immediately
+      db.prepare('UPDATE users SET balance = balance - ?, total_withdraw = total_withdraw + ? WHERE id = ?').run(amount, amount, userId);
+
+      db.prepare('INSERT INTO transactions (user_id, type, amount, status) VALUES (?, "withdraw", ?, "pending")').run(userId, amount);
+    });
+    action();
+
+    const updated = db.prepare('SELECT balance FROM users WHERE id=?').get(userId);
+    return res.json({ message: 'Withdrawal request submitted', balance: updated.balance });
+  } catch (err) {
+    console.error('initiateWithdraw error:', err);
+    return res.status(500).json({ error: 'Failed to process withdrawal' });
+  }
+}
+
+/* ========== QUERIES ========== */
+async function getUserWithdrawals(req, res) {
+  try {
+    const rows = db.prepare('SELECT id, requested_amount, status, upi_id, created_at FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC').all(req.user.userId);
+    res.json({ withdrawals: rows });
+  } catch (err) {
+    console.error('getUserWithdrawals error:', err);
+    res.status(500).json({ error: 'Failed to fetch withdrawals' });
+  }
+}
+
+async function getTransactions(req, res) {
+  try {
+    const rows = db.prepare('SELECT id, type, amount, status, created_at FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 200').all(req.user.userId);
+    res.json({ transactions: rows });
+  } catch (err) {
+    console.error('getTransactions error:', err);
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
+}
+
+/* ========== ADMIN ACTIONS ========== */
+async function approveRecharge(req, res) {
+  try {
+    const { transactionId } = req.body;
+    const trx = db.prepare("SELECT id, user_id, amount, status, upi_id FROM transactions WHERE id=? AND type='recharge'").get(transactionId);
+    if (!trx) return res.status(404).json({ error: 'Recharge transaction not found' });
+
+    if (trx.status !== 'approved') {
+      const t = db.transaction(() => {
+        db.prepare('UPDATE transactions SET status="approved", updated_at=CURRENT_TIMESTAMP WHERE id=?').run(trx.id);
+        db.prepare('UPDATE users SET balance = balance + ?, total_recharge = total_recharge + ? WHERE id=?').run(trx.amount, trx.amount, trx.user_id);
+        if (trx.upi_id) db.prepare('UPDATE upi_ids SET today_count = today_count + 1 WHERE id = ?').run(trx.upi_id);
+      });
+      t();
+    }
+    res.json({ message: 'Recharge approved' });
+  } catch (err) {
+    console.error('approveRecharge error:', err);
+    res.status(500).json({ error: 'Failed to approve recharge' });
+  }
+}
+
+async function approveWithdrawal(req, res) {
+  try {
+    const { withdrawalId } = req.body;
+    const w = db.prepare('SELECT id, user_id, requested_amount, status FROM withdrawals WHERE id=?').get(withdrawalId);
+    if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
+    if (w.status === 'approved') return res.json({ message: 'Already approved' });
+
+    db.prepare('UPDATE withdrawals SET status="approved", updated_at=CURRENT_TIMESTAMP WHERE id=?').run(w.id);
+    db.prepare('UPDATE transactions SET status="approved", updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND type="withdraw" AND amount=? AND status="pending" ORDER BY created_at DESC LIMIT 1').run(w.user_id, w.requested_amount);
+
+    res.json({ message: 'Withdrawal approved' });
+  } catch (err) {
+    console.error('approveWithdrawal error:', err);
+    res.status(500).json({ error: 'Failed to approve withdrawal' });
+  }
+}
+
+async function denyWithdrawal(req, res) {
+  try {
+    const { withdrawalId, reason } = req.body;
+    const w = db.prepare('SELECT id, user_id, requested_amount, status FROM withdrawals WHERE id=?').get(withdrawalId);
+    if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
+
+    const undo = db.transaction(() => {
+      db.prepare('UPDATE withdrawals SET status="denied", reason=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(reason || 'Denied', w.id);
+      // refund
+      db.prepare('UPDATE users SET balance = balance + ? WHERE id=?').run(w.requested_amount, w.user_id);
+      db.prepare('UPDATE transactions SET status="failed", updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND type="withdraw" AND amount=? AND status="pending" ORDER BY created_at DESC LIMIT 1').run(w.user_id, w.requested_amount);
+    });
+    undo();
+
+    res.json({ message: 'Withdrawal denied and amount refunded' });
+  } catch (err) {
+    console.error('denyWithdrawal error:', err);
+    res.status(500).json({ error: 'Failed to deny withdrawal' });
+  }
+}
+
+module.exports = {
+  initiateRecharge,
+  confirmRecharge,
+  initiateWithdraw,
+  getUserWithdrawals,
+  getTransactions,
+  approveRecharge,
+  approveWithdrawal,
+  denyWithdrawal,
+};}
 
 async function approveRecharge(req, res) {
   const { transactionId } = req.body;
