@@ -5,23 +5,21 @@ const initSqlJs = require('sql.js');
 
 const dbPath = path.join(__dirname, '..', 'database.sqlite');
 
-// Stable reference that other modules import:  const { db, initDatabase } = require('./db')
-const dbRef = {};      // <- is object ko hum mutate karte rahenge, taaki destructured imports valid rahein
-let SQL = null;        // sql.js module handle
-let _db = null;        // internal sql.js Database instance
+// Stable reference (so require('./db').db works even before init)
+const dbRef = {};
+let SQL = null;
+let _db = null;
 
-// ---- helpers ----
 function persist() {
   if (!_db) return;
   const data = _db.export();
   fs.writeFileSync(dbPath, Buffer.from(data));
 }
 
-// better-sqlite3 jaisa chhota compat wrapper: dbRef.exec / dbRef.prepare(...).run/get/all
 function makeCompat(db) {
   return {
     pragma(_q) {
-      // sql.js pragmas ignore karta hai; safe no-op
+      // no-op for sql.js
     },
     exec(sql) {
       db.exec(sql);
@@ -31,10 +29,9 @@ function makeCompat(db) {
       return {
         run(...params) {
           const stmt = db.prepare(sql);
-          // allow either .run([a,b]) or .run(a,b)
           if (params.length === 1 && Array.isArray(params[0])) stmt.bind(params[0]);
           else stmt.bind(params);
-          while (stmt.step()) {}   // execute fully
+          while (stmt.step()) {}
           stmt.free();
 
           const changes = db.getRowsModified();
@@ -49,7 +46,6 @@ function makeCompat(db) {
           persist();
           return { changes, lastInsertRowid };
         },
-
         get(...params) {
           const stmt = db.prepare(sql);
           if (params.length === 1 && Array.isArray(params[0])) stmt.bind(params[0]);
@@ -65,7 +61,6 @@ function makeCompat(db) {
           stmt.free();
           return row;
         },
-
         all(...params) {
           const stmt = db.prepare(sql);
           if (params.length === 1 && Array.isArray(params[0])) stmt.bind(params[0]);
@@ -84,20 +79,33 @@ function makeCompat(db) {
         },
       };
     },
+    // better-sqlite3 style transaction wrapper
+    transaction(fn) {
+      return (...args) => {
+        try {
+          db.exec('BEGIN');
+          const out = fn(...args);
+          db.exec('COMMIT');
+          persist();
+          return out;
+        } catch (e) {
+          try { db.exec('ROLLBACK'); } catch (_) {}
+          throw e;
+        }
+      };
+    },
   };
 }
 
-// ---- main init ----
 async function initDatabase() {
-  // idempotent
   if (SQL && _db) return;
 
-  // load wasm & open db
   if (!SQL) {
     SQL = await initSqlJs({
       locateFile: (file) => require.resolve('sql.js/dist/' + file),
     });
   }
+
   if (fs.existsSync(dbPath)) {
     const filebuffer = fs.readFileSync(dbPath);
     _db = new SQL.Database(filebuffer);
@@ -105,11 +113,10 @@ async function initDatabase() {
     _db = new SQL.Database();
   }
 
-  // make the stable reference usable for already-required modules
+  // expose compat methods on dbRef
   Object.assign(dbRef, makeCompat(_db));
 
   // ---------- SCHEMA (safe to run every start) ----------
-  // Minimal tables your app expects
   dbRef.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,6 +125,7 @@ async function initDatabase() {
       balance REAL DEFAULT 0.00,
       total_recharge REAL DEFAULT 0.00,
       total_withdraw REAL DEFAULT 0.00,
+      total_welfare REAL DEFAULT 0.00,
       referral_code TEXT UNIQUE,
       referred_by TEXT,
       is_admin INTEGER DEFAULT 0,
@@ -128,9 +136,22 @@ async function initDatabase() {
     CREATE TABLE IF NOT EXISTS transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
-      type TEXT NOT NULL,            -- recharge | withdraw | purchase | etc
+      type TEXT NOT NULL,             -- recharge | withdraw | purchase | etc
       amount REAL NOT NULL,
+      upi_id INTEGER,                 -- optional FK to upi_ids for recharge
+      status TEXT DEFAULT 'pending',  -- pending | approved | failed
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS withdrawals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      requested_amount REAL NOT NULL,
       status TEXT DEFAULT 'pending',
+      upi_id TEXT,
+      admin_id INTEGER,
+      reason TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -145,25 +166,63 @@ async function initDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS checkins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      checkin_date TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS upi_ids (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       upi_id TEXT NOT NULL,
       daily_limit INTEGER DEFAULT 20,
       today_count INTEGER DEFAULT 0,
-      rotate_after INTEGER DEFAULT 20,
+      rotate_after INTEGER DEFAULT 10,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  // ---------- MIGRATIONS (existing DBs ke liye incremental fixes) ----------
+  // ---------- MIGRATIONS / ensure columns exist ----------
   try {
-    const cols = dbRef.prepare('PRAGMA table_info(users)').all().map((r) => r.name);
-    if (!cols.includes('total_welfare')) {
-      dbRef.exec(`ALTER TABLE users ADD COLUMN total_welfare REAL DEFAULT 0.00`);
+    // if transactions missing upi_id column, attempt to add (no-op if exists)
+    try {
+      const tcols = dbRef.prepare('PRAGMA table_info(transactions)').all().map(r => r.name);
+      if (!tcols.includes('upi_id')) {
+        dbRef.exec('ALTER TABLE transactions ADD COLUMN upi_id INTEGER;');
+        console.log('Migration: added transactions.upi_id');
+      }
+    } catch (e) {
+      // ignore if ALTER not supported or already present
+    }
+
+    // ensure total_welfare exists
+    try {
+      const cols = dbRef.prepare('PRAGMA table_info(users)').all().map(r => r.name);
+      if (!cols.includes('total_welfare')) {
+        dbRef.exec('ALTER TABLE users ADD COLUMN total_welfare REAL DEFAULT 0.00');
+        console.log('Migration: added users.total_welfare');
+      }
+    } catch (e) {
+      // ignore
     }
   } catch (e) {
-    console.error('users table migration failed:', e);
+    console.error('Migration error:', e);
+  }
+
+  // ---------- SEED default UPI if none ----------
+  try {
+    const r = dbRef.prepare('SELECT COUNT(*) AS c FROM upi_ids').get();
+    if (!r || !r.c) {
+      const defaultUpi = process.env.DEFAULT_UPI_ID || 'demo@upi';
+      dbRef.prepare('INSERT INTO upi_ids (upi_id, daily_limit, today_count, rotate_after) VALUES (?, ?, ?, ?)')
+        .run(defaultUpi, 20, 0, 10);
+      console.log('Seeded default UPI ID:', defaultUpi);
+    }
+  } catch (e) {
+    console.error('Seeding UPI failed:', e);
   }
 
   console.log('SQLite (sql.js) database initialized at', dbPath);
